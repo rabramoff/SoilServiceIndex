@@ -1,0 +1,103 @@
+---
+title: "Soil_Index_1stDraft"
+author: "Rose Abramoff"
+date: "9/25/2017"
+output: html_document
+---
+#Load Workspace
+```{r}
+load(file="SoilIndex.Rdata")
+```
+
+#Preliminary Index from 0-1
+```{r}
+EnterYourSOCValue <- 1000 #in gC/dm3 - same as kg/m3
+EnterYourNminValue <- 30 #in g/m2/yr for OA horizons
+EnterYourTotPValue <- 10 #in mg P/kg
+SOCWeight <- 1
+NminWeight <- 0.5
+TotPWeight <- 0.5
+
+W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourTotPValue,SOCWeight,NminWeight,TotPWeight)
+```
+
+#Other scripts
+##Explore soil organic carbon data
+```{r}
+summary(lay$orgc_value_avg)
+hist(lay$orgc_value_avg, xlim = c(0,100), breaks=100, xlab=expression("SOC (gC/kg)"))
+hist(lay$bdws_value_avg) #bulk density of whole soil kg/dm3
+
+hist(lay$orgc_value_avg*lay$bdws_value_avg,  xlim = c(0,100), breaks=100, xlab=expression("SOC (gC/dm3)"), main="Soil Organic Carbon") #same as kg/m3
+
+summary(lay$orgc_value_avg*lay$bdws_value_avg)
+#possible index by quartiles: 0-2.6 low, 2.6-6 med, 6-14.9 good, 14.9-1250 high
+
+#no land use type, but location and soil type
+summary(df$cfao_soil_unit) #fao
+summary(df$cfao_major_group)
+summary(df$cstx_great_group) #soil tax
+summary(df$cwrb_reference_soil_group) #world reference base
+summary(df$cwrb_prefix_qualifier)
+summary(df$cwrb_suffix_qualifier)
+
+require(ggplot2)
+lay$soc_estimate <- lay$orgc_value_avg*lay$bdws_value_avg
+ggplot(lay, aes(soc_estimate)) +
+  geom_density()
+#takes a while:
+#ggplot(lay, aes(soc_estimate, fill=orgc_profile_code)) +
+#  stat_density(position="stack")
+```
+
+##Explore N and P data
+```{r}
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_O_mean)))
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_A_mean)))
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))) #g/m2/horizon
+summary(pf$Total.P) #mg P/kg
+
+hist(as.numeric(as.character(nf$Nmin_g_m2_yr_O_mean)), xlim = c(0,100), breaks=100, xlab=expression("Nmin (g/m2/y O horizon)"))
+hist(as.numeric(as.character(pf$Total.P)), xlim = c(0,2000), breaks=100, xlab=expression("Total P (mg/kg)"))
+
+require(ggplot2)
+ggplot(nf, aes(as.numeric(as.character(nf$Nmin_g_m2_yr_O_mean)))) +
+  geom_density()
+ggplot(pf, aes(pf$Total.P)) +
+  geom_density()
+
+ggplot(nf, aes(NminNum, fill=LandUseType)) +
+  stat_density(position="stack") +
+  xlim(-10,60) +
+  xlab("N mineralization (g/m2/y) - OA horizon")
+```
+
+##Index Function
+```{r}
+SOCnums <- lay$orgc_value_avg*lay$bdws_value_avg
+SOCnums <- SOCnums[!is.na(SOCnums)] #remove NAs
+nf$NminNum <- as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))
+Nnums <- nf$NminNum[!is.na(nf$NminNum)] #remove NAs
+Nnums <- Nnums[Nnums < 400 & Nnums > -200] #remove 2 outliers
+TotP <- pf$Total.P
+
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+rangeSOC <- function(x){(x-min(SOCnums))/(max(SOCnums)-min(SOCnums))}
+rangeNmin <- function(x){(x-min(Nnums))/(max(Nnums)-min(Nnums))}
+rangeTotP <- function(x){(x-min(TotP))/(max(TotP)-min(TotP))}
+
+#SOCindex <- range01(SOCnums)
+#Nindex <- range01(Nnums)
+#Pindex <- range01(TotP)
+#plot(SOCindex)
+#plot(Nindex)
+#plot(Pindex)
+
+W.Index <- function(s,n,p,ws,wn,wp){
+SOCindex <- rangeSOC(EnterYourSOCValue)
+Nindex <- rangeNmin(EnterYourNminValue)
+Pindex <- rangeTotP(EnterYourTotPValue)
+windex <- (SOCindex*ws + Nindex*wn + Pindex*wp)/3
+return(windex)
+}
+```
