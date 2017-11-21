@@ -1,0 +1,129 @@
+---
+title: "Soil_Index_Draft"
+author: "Rose Abramoff"
+date: "9/25/2017"
+output: html_document
+---
+#Looking for gridded products to classify variables into land use type, soil type, and by climate (MAT, MAP)
+##Land use type
+```
+MODIS IGBP land cover map (Liu et al. 2015 NCC re-sampled to 0.25◦ by dominant land use to calculate ABC per biome) 
+Friedl, M. A. et al. MODIS Collection 5 global land cover: Algorithm refinements and characterization of new datasets. Remote Sens. Environ. 114, 168–182 (2010).
+maybe here? need to look at Friedl paper some more: https://modis.gsfc.nasa.gov/data/
+```
+##Soil type
+```
+Soilgrids (used in Crowther et al. 2016 Nature meta-analysis as in Koven et al. 2015 Phil. Trans. R. Soc. A following the procedure in Crowther et al. 2015 Nature which seems to mean simply taking the co-located or nearest 1km resolution grid)
+http://www.isric.org/explore/soilgrids
+ftp://ftp.soilgrids.org/data/recent/ <- I'm having trouble connecting to this with ftp soilgrids.org
+```
+##Climate
+```
+Worldclim ("Bioclim" in Crowther et al. 2016 Nature following the procedure in Crowther et al. 2015 Nature, which seems to mean simply taking the co-located or nearest 1km resolution grid)
+http://www.worldclim.org/bioclim
+http://worldclim.org/version2 #can get down to 1km spatial resolution
+download some 30 minute (1km resolution) data
+```
+
+#Load Workspace
+```{r}
+load(file="SoilIndex.Rdata")
+```
+
+#Preliminary Index from 0-1
+```{r}
+EnterYourSOCValue <- 1000 #in gC/dm3 - same as kg/m3
+EnterYourNminValue <- 30 #in g/m2/yr for OA horizons
+EnterYourResPValue <- 10 #in mg P/kg
+SOCWeight <- 1
+NminWeight <- 0.5
+ResPWeight <- 0.5
+
+W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourResPValue,SOCWeight,NminWeight,ResPWeight)
+```
+
+#Other scripts
+##Explore soil organic carbon data
+```{r}
+summary(lay$orgc_value_avg)
+hist(lay$orgc_value_avg, xlim = c(0,100), breaks=100, xlab=expression("SOC (gC/kg)"))
+hist(lay$bdws_value_avg) #bulk density of whole soil kg/dm3
+
+hist(lay$orgc_value_avg*lay$bdws_value_avg,  xlim = c(0,100), breaks=100, xlab=expression("SOC (gC/dm3)"), main="Soil Organic Carbon") #same as kg/m3
+
+summary(lay$orgc_value_avg*lay$bdws_value_avg)
+#possible index by quartiles: 0-2.6 low, 2.6-6 med, 6-14.9 good, 14.9-1250 high
+
+#no land use type, but location and soil type
+summary(df$cfao_soil_unit) #fao
+summary(df$cfao_major_group)
+summary(df$cstx_great_group) #soil tax
+summary(df$cwrb_reference_soil_group) #world reference base
+summary(df$cwrb_prefix_qualifier)
+summary(df$cwrb_suffix_qualifier)
+
+require(ggplot2)
+lay$soc_estimate <- lay$orgc_value_avg*lay$bdws_value_avg
+ggplot(lay, aes(soc_estimate)) +
+  geom_density()
+#takes a while:
+#ggplot(lay, aes(soc_estimate, fill=orgc_profile_code)) +
+#  stat_density(position="stack")
+```
+
+##Explore N and P data
+```{r}
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_O_mean)))
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_A_mean)))
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))) #g/m2/horizon
+summary(pf$Resin.Pi) #mg P/kg
+
+hist(as.numeric(as.character(nf$Nmin_g_m2_yr_O_mean)), xlim = c(0,100), breaks=100, xlab=expression("Nmin (g/m2/y O horizon)"))
+hist(as.numeric(as.character(pf$Resin.Pi)), xlim = c(0,200), breaks=100, xlab=expression("Resin P (mg/kg)"))
+
+require(ggplot2) ##fix margin of legend in this figure...generally cleanup...3d or semi-transparent
+ggplot(nf, aes(as.numeric(as.character(nf$Nmin_g_m2_yr_O_mean)))) +
+  geom_density()
+ggplot(pf, aes(pf$Resin.Pi)) +
+  geom_density()
+
+ggplot(nf, aes(NminNum, fill=LandUseType)) + #fix labs
+  stat_density(position="stack") +
+  xlim(-10,60) +
+  xlab("Topsoil N mineralization (g/m2/y)") #OA horizon in caption
+
+ggplot(pf, aes(pf$Resin.Pi, fill=LandUseType)) + #fix labs
+  stat_density(position="stack") +
+  xlim(-10,60) +
+  xlab("Topsoil Resin P (mg/kg)") #OA horizon in caption
+```
+
+##Index Function
+```{r}
+SOCnums <- lay$orgc_value_avg*lay$bdws_value_avg
+SOCnums <- SOCnums[!is.na(SOCnums)] #remove NAs
+nf$NminNum <- as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))
+Nnums <- nf$NminNum[!is.na(nf$NminNum)] #remove NAs
+Nnums <- Nnums[Nnums < 400 & Nnums > -200] #remove 2 outliers
+ResP <- pf$Resin.Pi
+
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+rangeSOC <- function(x){(x-min(SOCnums))/(max(SOCnums)-min(SOCnums))}
+rangeNmin <- function(x){(x-min(Nnums))/(max(Nnums)-min(Nnums))}
+rangeResP <- function(x){(x-min(ResP))/(max(ResP)-min(ResP))}
+
+#SOCindex <- range01(SOCnums)
+#Nindex <- range01(Nnums)
+#Pindex <- range01(ResP)
+#plot(SOCindex)
+#plot(Nindex)
+#plot(Pindex)
+
+W.Index <- function(s,n,p,ws,wn,wp){
+SOCindex <- rangeSOC(EnterYourSOCValue)
+Nindex <- rangeNmin(EnterYourNminValue)
+Pindex <- rangeResP(EnterYourResPValue)
+windex <- (SOCindex*ws + Nindex*wn + Pindex*wp)/3
+return(windex)
+}
+```
