@@ -24,48 +24,187 @@ http://www.worldclim.org/bioclim
 http://worldclim.org/version2 #can get down to 1km spatial resolution
 download some 30 minute (1km resolution) data
 ```
-#Load Workspace
+#load Colin's SOC data - used with permission
 ```{r}
-load(file="SoilIndex.Rdata")
+sf <- read.csv("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/Allison/SOCData_Averilletal2014Nature.csv")
 ```
 
-#Preliminary Index from 0-1
+#load Allison's N min data
 ```{r}
-EnterYourSOCValue <- 1000 #in gC/dm3 - same as kg/m3
-EnterYourNminValue <- 30 #in g/m2/yr for OA horizons
-EnterYourClayValue <- 60 #in %
+nf <- read.csv("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/Allison/Nmin_data_UpdateForRose_20170922.csv")
+pf <- read.csv("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/Allison/HedleyP_database_updateforRose_20170927.csv")
+```
+
+#Index
+```{r}
+##Subsect whole data set
+SOCnums <- sf[sf$LandUseType==c("forest","grass","undisturbed"),]
+SOCnums <- SOCnums[!is.na(SOCnums$carbon.1m),] #remove NAs
+nf$Nmin_g_m2_yr_OA_mean <- as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))
+#Nnums <- nf[nf$LandUseType==c("forest","grass","undisturbed"),]
+#Nnums <- Nnums[!is.na(Nnums$Nmin_g_m2_yr_OA_mean),] #remove NAs
+Nnums <- nf[!is.na(nf$Nmin_g_m2_yr_OA_mean),] #remove NAs
+Nnums <- Nnums[Nnums$Nmin_g_m2_yr_OA_mean < 80 & Nnums$Nmin_g_m2_yr_OA_mean > -200,] #remove 2 outliers
+Claynums <- sf[sf$LandUseType==c("forest","grass","undisturbed"),]
+Claynums <- Claynums[!is.na(Claynums$clay.1m),] #remove NAs
+
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+rangeSOC <- function(x){(x-min(SOCnums$carbon.1m))/(max(SOCnums$carbon.1m)-min(SOCnums$carbon.1m))}
+rangeNmin <- function(x){(x-min(Nnums$Nmin_g_m2_yr_OA_mean))/(max(Nnums$Nmin_g_m2_yr_OA_mean)-min(Nnums$Nmin_g_m2_yr_OA_mean))}
+rangeClay <- function(x){(x-min(Claynums$clay.1m))/(max(Claynums$clay.1m)-min(Claynums$clay.1m))}
+
+W.Index <- function(s,n,c,ws,wn,wc){
+SOCindex <- rangeSOC(EnterYourSOCValue)
+Nindex <- rangeNmin(EnterYourNminValue)
+Clayindex <- rangeClay(EnterYourClayValue)
+windex <- (SOCindex*ws + Nindex*wn + Clayindex*wc)/3
+return(windex)
+}
+
+socs <- NULL
+nmins <- NULL
+clays <- NULL
+
+socs[[1]] = tapply(SOCnums$carbon.1m, SOCnums$LandUseType, FUN=min)
+nmins[[1]] = tapply(Nnums$Nmin_g_m2_yr_OA_mean, Nnums$LandUseType, FUN=min, na.rm=T)
+clays[[1]] = tapply(Claynums$clay.1m, Claynums$LandUseType, FUN=min, na.rm=T)
+socs[[2]] = tapply(SOCnums$carbon.1m, SOCnums$LandUseType, FUN=mean)
+nmins[[2]] = tapply(Nnums$Nmin_g_m2_yr_OA_mean, Nnums$LandUseType, FUN=mean, na.rm=T)
+clays[[2]] = tapply(Claynums$clay.1m, Claynums$LandUseType, FUN=mean, na.rm=T)
+socs[[3]] = tapply(SOCnums$carbon.1m, SOCnums$LandUseType, FUN=max)
+nmins[[3]] = tapply(Nnums$Nmin_g_m2_yr_OA_mean, Nnums$LandUseType, FUN=max, na.rm=T)
+clays[[3]] = tapply(Claynums$clay.1m, Claynums$LandUseType, FUN=max, na.rm=T)
+
+Equalweight=NULL
+SOCweighted=NULL
+Clayweighted=NULL
+Nminweighted=NULL
+
+for (i in 1:3){
+EnterYourSOCValue <- socs[[i]][c("forest","grass","undisturbed")] #kgC/m2 to 1m
+EnterYourNminValue <- nmins[[i]][c("forest","grass","undisturbed")] #in g/m2/yr for OA horizons
+EnterYourClayValue <- clays[[i]][c("forest","grass","undisturbed")] #in %
 SOCWeight <- 1
+NminWeight <- 1
+ClayWeight <- 1
+
+Equalweight[[i]] <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
+
+SOCWeight <- 1.5
 NminWeight <- 0.5
 ClayWeight <- 0.5
 
+SOCweighted[[i]] <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
+
+SOCWeight <- 0.5
+NminWeight <- 0.5
+ClayWeight <- 1.5
+
+Clayweighted[[i]] <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
+
+SOCWeight <- 0.5
+NminWeight <- 1.5
+ClayWeight <- 0.5
+
+Nminweighted[[i]] <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
+}
+
+#pdf(file="/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/figures/mean_index_by_landuse_barplots.pdf")
+tab = rbind(Equalweight[[2]],SOCweighted[[2]])
+tabmin = rbind(Equalweight[[1]],SOCweighted[[1]])
+tabmax = rbind(Equalweight[[3]],SOCweighted[[3]])
+barplot(tab, beside = T, legend=T, legend.text = c("Equal Weight","SOC Weighted 3x"), ylim=c(0,0.3))
+segments(tab, c(tabmin[1,],tabmin[2,]), tab, c(tabmax[1,],tabmax[2,]), lwd = 1.5, col=1) #!
+arrows(tab, tabmin, tab, tabmax, lwd = 1.5, angle = 90, code = 3, length = 0.05) #!
+
+tab2 = rbind(Equalweight[[2]],SOCweighted[[2]], Nminweighted[[2]], Clayweighted[[2]])
+barplot(tab2, beside = T, col= c(1,"brown","dark green","gray"), legend=T, legend.text = c("Equal Weight","SOC Weighted 3x","Nmin Weighted 3x","Clay Weighted 3x"), ylim=c(0,1))
+#dev.off()
+
+#Example
+means <- c(23, 28, 19)
+names <- c("squirrel", "rabbit", "chipmunk")
+standardErrors <- c(1.2, 1.7, 0.9)
+plotTop <- max(means+standardErrors*2)
+barCenters <- barplot(means, names.arg=names, col="gray", las=1, ylim=c(0,plotTop))
+segments(barCenters, means-standardErrors*2, barCenters, means+standardErrors*2, lwd=2)
+```
+
+
+#Preliminary Index from 0-1
+```{r}
+EnterYourSOCValue <- 100 #in gC/dm3 - same as kg/m3
+EnterYourNminValue <- 30 #in g/m2/yr for OA horizons
+EnterYourClayValue <- 60 #in %
+SOCWeight <- 1
+NminWeight <- 1
+ClayWeight <- 1
+
 W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
 ```
+
 
 #Other scripts
 #Make plots
 ```{r}
 library(ggplot2)
 
-#pdf(file="/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/density_plots.pdf")
 #SOC plot
-ggplot(sf, aes(carbon.1m, fill=LandUseType)) +
+p.soc <- ggplot(SOCnums, aes(carbon.1m, fill=LandUseType)) +
   stat_density(position="identity", alpha=0.7) +
   xlab("Soil C (kgC/m2) - 1m") +
   theme(text = element_text(size=20))
 
 #N min plot
-ggplot(nf, aes(NminNum, fill=LandUseType)) +
+p.nmin <- ggplot(Nnums, aes(Nmin_g_m2_yr_OA_mean, fill=LandUseType)) +
   stat_density(position="identity", alpha=0.7) +
-  xlim(-10,60) +
+  #xlim(-10,60) +
   xlab("N mineralization (g/m2/y) - OA horizon") +
   theme(text = element_text(size=20))
 
 #Clay plot
-ggplot(sf, aes(clay.1m, fill=LandUseType)) +
+p.clay <- ggplot(Claynums, aes(clay.1m, fill=LandUseType)) +
   stat_density(position="identity", alpha=0.7) +
   xlab("Clay content (%) - 1m") +
   theme(text = element_text(size=20))
-#dev.off()
+
+pdf(file="/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/density_plots.pdf")
+p.soc
+p.nmin
+p.clay
+dev.off()
+```
+
+#Make normalized plots
+```{r}
+pdf(file="/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/density_plots_normalized.pdf")
+
+#SOC plot
+SOCnums$norm.carbon.1m <- rangeSOC(SOCnums$carbon.1m)
+ggplot(SOCnums, aes(norm.carbon.1m, fill=LandUseType)) +
+  stat_density(position="identity", alpha=0.7) +
+  xlab("Soil C (normalized) - 1m") +
+  theme(text = element_text(size=20)) +
+  xlim(0,1)
+
+#N min plot
+Nnums$norm.NminNum <- rangeNmin(Nnums$Nmin_g_m2_yr_OA_mean)
+ggplot(Nnums, aes(norm.NminNum, fill=LandUseType)) +
+  stat_density(position="identity", alpha=0.7) +
+  #xlim(-10,60) +
+  xlab("N mineralization (normalized) - OA horizon") +
+  theme(text = element_text(size=20)) +
+  xlim(0,1)
+
+#Clay plot
+Claynums$norm.clay.1m <- rangeClay(Claynums$clay.1m)
+ggplot(Claynums, aes(norm.clay.1m, fill=LandUseType)) +
+  stat_density(position="identity", alpha=0.7) +
+  xlab("Clay content (normalized) - 1m") +
+  theme(text = element_text(size=20))+
+  xlim(0,1)
+
+dev.off()
 ```
 
 #Map of sites - find sites that overlap in the two datasets
@@ -109,90 +248,4 @@ gg2 +
 #dev.off()
 ```
 
-#Index
-```{r}
-##Redo index function for three land types only
-SOCnums <- sf[sf$LandUseType==c("forest","grass","undisturbed"),]$carbon.1m
-SOCnums <- SOCnums[!is.na(SOCnums)] #remove NAs
-NminNums <- as.numeric(as.character(nf[nf$LandUseType==c("forest","grass","undisturbed"),]$Nmin_g_m2_yr_OA_mean))
-Nnums <- NminNums[!is.na(NminNums)] #remove NAs
-Nnums <- Nnums[Nnums < 400 & Nnums > -200] #remove 2 outliers
-Claynums <- sf[sf$LandUseType==c("forest","grass","undisturbed"),]$clay.1m
-Claynums <- Claynums[!is.na(Claynums)] #remove NAs
-
-range01 <- function(x){(x-min(x))/(max(x)-min(x))}
-rangeSOC <- function(x){(x-min(SOCnums))/(max(SOCnums)-min(SOCnums))}
-rangeNmin <- function(x){(x-min(Nnums))/(max(Nnums)-min(Nnums))}
-rangeClay <- function(x){(x-min(Claynums))/(max(Claynums)-min(Claynums))}
-
-W.Index <- function(s,n,c,ws,wn,wc){
-SOCindex <- rangeSOC(EnterYourSOCValue)
-Nindex <- rangeNmin(EnterYourNminValue)
-Clayindex <- rangeClay(EnterYourClayValue)
-windex <- (SOCindex*ws + Nindex*wn + Clayindex*wc)/3
-return(windex)
-}
-
-socs = tapply(sf$carbon.1m, sf$LandUseType, FUN=mean)
-nmins = tapply(nf$NminNum, nf$LandUseType, FUN=mean, na.rm=T)
-clays = tapply(sf$clay.1m, sf$LandUseType, FUN=mean, na.rm=T)
-EnterYourSOCValue <- socs[c("forest","grass","undisturbed")] #kgC/m2 to 1m
-EnterYourNminValue <- nmins[c("forest","grass","undisturbed")] #in g/m2/yr for OA horizons
-EnterYourClayValue <- clays[c("forest","grass","undisturbed")] #in %
-SOCWeight <- 1
-NminWeight <- 1
-ClayWeight <- 1
-
-Equalweight <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
-
-SOCWeight <- 1.5
-NminWeight <- 0.5
-ClayWeight <- 0.5
-
-SOCweighted <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
-
-SOCWeight <- 0.5
-NminWeight <- 0.5
-ClayWeight <- 1.5
-
-Clayweighted <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
-
-SOCWeight <- 0.5
-NminWeight <- 1.5
-ClayWeight <- 0.5
-
-Nminweighted <- W.Index(EnterYourSOCValue,EnterYourNminValue,EnterYourClayValue,SOCWeight,NminWeight,ClayWeight)
-
-#pdf(file="/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/figures/mean_index_by_landuse_barplots.pdf")
-tab = rbind(Equalweight,SOCweighted)
-barplot(tab, beside = T, legend=T, legend.text = c("Equal Weight","SOC Weighted 3x"))
-
-tab = rbind(Equalweight,SOCweighted, Nminweighted, Clayweighted)
-barplot(tab, beside = T, col= c(1,"brown","dark green","gray"), legend=T, legend.text = c("Equal Weight","SOC Weighted 3x","Nmin Weighted 3x","Clay Weighted 3x"))
-#dev.off()
-```
-
-##Index Function
-```{r}
-SOCnums <- sf$carbon.1m
-SOCnums <- SOCnums[!is.na(SOCnums)] #remove NAs
-nf$NminNum <- as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))
-Nnums <- nf$NminNum[!is.na(nf$NminNum)] #remove NAs
-Nnums <- Nnums[Nnums < 400 & Nnums > -200] #remove 2 outliers
-Claynums <- sf$clay.1m
-Claynums <- Claynums[!is.na(Claynums)] #remove NAs
-
-range01 <- function(x){(x-min(x))/(max(x)-min(x))}
-rangeSOC <- function(x){(x-min(SOCnums))/(max(SOCnums)-min(SOCnums))}
-rangeNmin <- function(x){(x-min(Nnums))/(max(Nnums)-min(Nnums))}
-rangeClay <- function(x){(x-min(Claynums))/(max(Claynums)-min(Claynums))}
-
-W.Index <- function(s,n,c,ws,wn,wc){
-SOCindex <- rangeSOC(EnterYourSOCValue)
-Nindex <- rangeNmin(EnterYourNminValue)
-Clayindex <- rangeClay(EnterYourClayValue)
-windex <- (SOCindex*ws + Nindex*wn + Clayindex*wc)/3
-return(windex)
-}
-```
 
