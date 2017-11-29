@@ -35,6 +35,106 @@ nf <- read.csv("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN
 pf <- read.csv("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/Allison/HedleyP_database_updateforRose_20170927.csv")
 ```
 
+#load WoSIS data
+```{r}
+df <- read.table("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/WoSIS_2016_July/wosis_201607_profiles.txt", sep="\t", header=T)
+att <- read.table("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/WoSIS_2016_July/wosis_201607_attributes.txt", sep="\t", header=T)
+lay <- read.table("/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/WoSIS_2016_July/wosis_201607_layers.txt", sep="\t", header=T, fill=T)
+```
+
+#Make histogram plots
+```{r}
+#WoSIS histograms
+summary(lay$orgc_value_avg)
+hist(lay$orgc_value_avg, xlim = c(0,100), breaks=100, xlab=expression("SOC (gC/kg)"))
+hist(lay$bdws_value_avg) #bulk density of whole soil kg/dm3
+summary(lay$orgc_value_avg*lay$bdws_value_avg)
+
+p1 <- hist(lay$orgc_value_avg*lay$bdws_value_avg,  xlim = c(0,100), breaks=1000, xlab=expression("Soil Organic Carbon (kgC"~m^3~")"), main="Soil Organic Carbon", col="dark gray") #same as kg/m3
+
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_O_mean)))
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_A_mean)))
+summary(as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))) #g/m2/horizon
+
+p2 <- hist(as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean)), xlim = c(-10,100), breaks=200, xlab=expression("N mineralization (gN"~m^2 ~yr^-1~")"), main="Topsoil Nitrogen Mineralization", col="dark gray")
+
+summary(lay$wrvo_value_avg)
+
+#hist(lay$wrvo_value_avg, xlim=c(0,100), breaks=100, xlab=expression("Volumetric Water Retention ("~cm^3~"100"~cm^-3~")"))
+
+wrvo.clean <- lay[!is.na(lay$wrvo_value_avg),]$wrvo_value_avg #remove NAs
+wrvo.clean <- wrvo.clean[wrvo.clean>1]
+summary(wrvo.clean)
+
+p3 <- hist(wrvo.clean, xlim=c(0,100), breaks=50, xlab=expression("Volumetric Water Retention ("~cm^3~"100"~cm^-3~")"), main="Volumetric Water Retention", col="dark gray")
+```
+
+#Make normalized histograms
+```{r}
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+
+summary(lay$orgc_value_avg*lay$bdws_value_avg)
+x = lay$orgc_value_avg*lay$bdws_value_avg  
+x = x[!is.na(x)]
+soc.norm = range01(x)
+
+x = as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))
+x = x[!is.na(x)]
+nmin.norm = range01(x)
+
+x = lay$wrvo_value_avg
+x = x[!is.na(x)]
+wrvo.norm = range01(x)
+
+p1 <- hist(soc.norm,  xlim = c(0,1), breaks=1000, xlab=expression("Soil Organic Carbon (kgC"~m^3~")"), main="Soil Organic Carbon", col="dark gray") #same as kg/m3
+
+p2 <- hist(nmin.norm, xlim = c(-10,100), breaks=200, xlab=expression("N mineralization (gN"~m^2 ~yr^-1~")"), main="Topsoil Nitrogen Mineralization", col="dark gray")
+
+p3 <- hist(wrvo.norm, xlim=c(0,100), breaks=50, xlab=expression("Volumetric Water Retention ("~cm^3~"100"~cm^-3~")"), main="Volumetric Water Retention", col="dark gray")
+```
+#Removing tails and suspected errors
+```{r}
+range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+
+x = lay$orgc_value_avg*lay$bdws_value_avg  
+x = x[!is.na(x)]
+x = x[x < quantile(x, 0.95) ] #remove 95% tail
+soc.norm = range01(x)
+
+x = as.numeric(as.character(nf$Nmin_g_m2_yr_OA_mean))
+x = x[!is.na(x)]
+x = x[x > quantile(x, 0.05) ] #remove 5% tail
+x = x[x < quantile(x, 0.95) ] #remove 95% tail
+nmin.norm = range01(x)
+
+x = lay$wrvo_value_avg
+x = x[!is.na(x)]
+x = x[x > quantile(x, 0.83) ] #remove values lower than 0.46
+wrvo.norm = range01(x)
+
+pdf(file="/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/figures/normalized_histograms.pdf")
+p1 <- hist(soc.norm,  xlim = c(0,1), breaks=100, xlab=expression("Soil Organic Carbon (kgC"~m^3~")"), main="Soil Organic Carbon", col="dark gray") #same as kg/m3
+
+p2 <- hist(nmin.norm, xlim = c(0,1), breaks=30, xlab=expression("N mineralization (gN"~m^2 ~yr^-1~")"), main="Topsoil Nitrogen Mineralization", col="dark gray")
+
+p3 <- hist(wrvo.norm, xlim=c(0,1), breaks=100, xlab=expression("Volumetric Water Retention ("~cm^3~"100"~cm^-3~")"), main="Volumetric Water Retention", col="dark gray")
+dev.off()
+```
+#Download RACA NRCS USDA Dataset
+```{r}
+raca <- read.csv(file="/Users/rzabramoff/Dropbox (Climate)/External Collaborations/ISCN/RaCA_Download/RaCA_Download/Data/RaCA_SOC_pedons.csv")
+
+#SOC stock is in Mg/ha
+head(raca)
+head(raca$SOCstock100) #Mg/ha
+raca$SOCkgm3 <- raca$SOCstock100/10 #convert to kg/m3
+summary(raca$SOCkgm3)
+
+hist(raca[raca$LU=="F",]$SOCkgm3)
+
+```
+
+
 #Index
 ```{r}
 ##Subsect whole data set
